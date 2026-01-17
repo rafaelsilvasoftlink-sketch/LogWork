@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>NeonFlow Logistics Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Inter&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+<style>
+html,body{
+    margin:0;
+    background:#0b0e14;
+    color:#ffffff;
+    font-family:Inter,sans-serif;
+    overflow-x:hidden;
+}
+h1{
+    text-align:center;
+    font-family:Orbitron;
+    color:#00f2ff;
+}
+
+/* ===== TRUCK ===== */
+.road{
+    position:relative;
+    height:90px;
+    margin:10px 0 20px;
+    border-top:2px solid rgba(0,242,255,.3);
+    border-bottom:2px solid rgba(0,242,255,.3);
+    overflow:hidden;
+}
+.truck{
+    position:absolute;
+    left:-200px;
+    top:10px;
+    width:180px;
+    transition:transform linear;
+}
+.truck svg{
+    width:100%;
+}
+
+/* ===== DASHBOARD ===== */
+.container{padding:20px}
+.kpis{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:15px;
+}
+.kpi{
+    background:rgba(255,255,255,0.08);
+    border:1px solid #00f2ff;
+    border-radius:12px;
+    padding:15px;
+    text-align:center;
+}
+.kpi span{
+    font-size:26px;
+    font-weight:600;
+    color:#ffffff;
+}
+
+.filters{text-align:center;margin:20px 0}
+.filter-btn{
+    margin:5px;
+    padding:10px 18px;
+    border:none;
+    border-radius:8px;
+    background:#00f2ff;
+    color:#000;
+    font-family:Orbitron;
+    cursor:pointer;
+}
+.filter-btn.selected{background:#ffffff}
+
+.dashboard{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(350px,1fr));
+    gap:20px;
+}
+.card{
+    background:rgba(255,255,255,0.06);
+    border:1px solid #00f2ff;
+    border-radius:14px;
+    padding:15px;
+}
+canvas{height:280px!important}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>NeonFlow Logistics</h1>
+
+<!-- TRUCK -->
+<div class="road">
+    <div class="truck" id="truck">
+        <svg viewBox="0 0 640 320">
+            <rect x="40" y="140" width="360" height="100" rx="15" fill="#00f2ff"/>
+            <rect x="400" y="160" width="160" height="80" rx="10" fill="#7cf7ff"/>
+            <rect x="420" y="175" width="80" height="40" fill="#0b0e14"/>
+            <circle cx="140" cy="260" r="30" fill="#000"/>
+            <circle cx="140" cy="260" r="15" fill="#00f2ff"/>
+            <circle cx="360" cy="260" r="30" fill="#000"/>
+            <circle cx="360" cy="260" r="15" fill="#00f2ff"/>
+            <circle cx="500" cy="260" r="28" fill="#000"/>
+            <circle cx="500" cy="260" r="14" fill="#00f2ff"/>
+        </svg>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpis">
+    <div class="kpi">Envios<br><span id="k1">0</span></div>
+    <div class="kpi">Receita Total<br><span id="k2">R$ 0,00</span></div>
+    <div class="kpi">Custos Totais<br><span id="k3">R$ 0,00</span></div>
+    <div class="kpi">Lucro Médio<br><span id="k4">R$ 0,00</span></div>
+    <div class="kpi">Entrega no Prazo<br><span id="k5">0%</span></div>
+    <div class="kpi">Lucro Total<br><span id="k6">R$ 0,00</span></div>
+</div>
+
+<!-- Filtros -->
+<div class="filters">
+    <p>CTRL para múltiplos filtros</p>
+    <button class="filter-btn" data-r="Norte">Norte</button>
+    <button class="filter-btn" data-r="Sul">Sul</button>
+    <button class="filter-btn" data-r="Leste">Leste</button>
+    <button class="filter-btn" data-r="Oeste">Oeste</button>
+</div>
+
+<!-- Gráficos -->
+<div class="dashboard">
+    <div class="card"><canvas id="gRadar"></canvas></div>
+    <div class="card"><canvas id="g2"></canvas></div>
+    <div class="card"><canvas id="g3"></canvas></div>
+    <div class="card"><canvas id="g4"></canvas></div>
+    <div class="card"><canvas id="g5"></canvas></div>
+</div>
+</div>
+
+<script>
+Chart.defaults.color="#ffffff";
+
+const regions=["Norte","Sul","Leste","Oeste"];
+const data=[];
+
+for(let i=0;i<9000;i++){
+    const revenue=Math.random()*4000+500;
+    const cost=Math.random()*2500+300;
+    data.push({
+        region:regions[Math.floor(Math.random()*4)],
+        revenue,
+        cost,
+        profit:revenue-cost,
+        onTime:Math.random()>0.2
+    });
+}
+
+let selected=[];
+let speed=6;
+const truck=document.getElementById("truck");
+
+function accelerateTruck(){
+    speed=Math.max(1.5,speed-0.8);
+    truck.style.transition=`transform ${speed}s linear`;
+    truck.style.transform=`translateX(${window.innerWidth+300}px)`;
+    setTimeout(()=>{
+        truck.style.transition="none";
+        truck.style.transform="translateX(-300px)";
+    },speed*1000);
+}
+
+function filtered(){
+    return selected.length ? data.filter(d=>selected.includes(d.region)) : data;
+}
+
+function formatBR(v){
+    return v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+/* Charts */
+const gRadar=new Chart(gRadarCanvas=document.getElementById("gRadar"),{
+    type:"radar",
+    data:{labels:regions,datasets:[{label:"Distribuição (%)",data:[],backgroundColor:"rgba(0,242,255,0.35)",borderColor:"#00f2ff"}]},
+    options:{scales:{r:{ticks:{display:false}}}}
+});
+
+const g2=new Chart(document.getElementById("g2"),{
+    type:"line",
+    data:{labels:regions,datasets:[{label:"Receita",data:[],backgroundColor:"rgba(0,242,255,0.3)",borderColor:"#00f2ff"}]}
+});
+
+const g3=new Chart(document.getElementById("g3"),{
+    type:"bar",
+    data:{labels:regions,datasets:[{label:"Custos",data:[],backgroundColor:"#ffffff"}]}
+});
+
+const g4=new Chart(document.getElementById("g4"),{
+    type:"bar",
+    data:{labels:regions,datasets:[{label:"Lucro",data:[],backgroundColor:"#7cf7ff"}]},
+    options:{indexAxis:"y"}
+});
+
+const g5=new Chart(document.getElementById("g5"),{
+    type:"doughnut",
+    data:{labels:["No Prazo","Atrasado"],datasets:[{data:[],backgroundColor:["#00f2ff","#ff4444"]}]}
+});
+
+function update(){
+    const f=filtered();
+    const total=f.length;
+    const revenue=f.reduce((a,b)=>a+b.revenue,0);
+    const cost=f.reduce((a,b)=>a+b.cost,0);
+    const profit=f.reduce((a,b)=>a+b.profit,0);
+    const onTime=Math.round((f.filter(d=>d.onTime).length/total)*100)||0;
+
+    k1.textContent=total.toLocaleString("pt-BR");
+    k2.textContent="R$ "+formatBR(revenue);
+    k3.textContent="R$ "+formatBR(cost);
+    k4.textContent="R$ "+formatBR(profit/total||0);
+    k5.textContent=onTime+"%";
+    k6.textContent="R$ "+formatBR(profit);
+
+    const counts=regions.map(r=>f.filter(d=>d.region===r).length);
+    const percent=counts.map(c=>((c/total)*100).toFixed(1));
+
+    gRadar.data.datasets[0].data=percent;
+    g2.data.datasets[0].data=regions.map(r=>f.filter(d=>d.region===r).reduce((a,b)=>a+b.revenue,0));
+    g3.data.datasets[0].data=regions.map(r=>f.filter(d=>d.region===r).reduce((a,b)=>a+b.cost,0));
+    g4.data.datasets[0].data=regions.map(r=>f.filter(d=>d.region===r).reduce((a,b)=>a+b.profit,0));
+    g5.data.datasets[0].data=[onTime,100-onTime];
+
+    [gRadar,g2,g3,g4,g5].forEach(c=>c.update());
+}
+
+document.querySelectorAll(".filter-btn").forEach(b=>{
+    b.onclick=e=>{
+        accelerateTruck();
+        const r=b.dataset.r;
+        if(e.ctrlKey){
+            selected.includes(r)?selected=selected.filter(x=>x!==r):selected.push(r);
+            b.classList.toggle("selected");
+        }else{
+            selected=[r];
+            document.querySelectorAll(".filter-btn").forEach(x=>x.classList.remove("selected"));
+            b.classList.add("selected");
+        }
+        update();
+    };
+});
+
+update();
+</script>
+</body>
+</html>
